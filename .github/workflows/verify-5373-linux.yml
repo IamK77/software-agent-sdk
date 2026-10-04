@@ -1,0 +1,63 @@
+---
+name: Verify bounded logging on Linux
+
+on:
+    push:
+        branches: [verify/5373-linux]
+
+permissions:
+    contents: read
+
+jobs:
+    regression:
+        if: github.repository == 'IamK77/software-agent-sdk'
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - python: '3.13'
+                      rich: 14.3.3
+                    - python: '3.12'
+                      rich: 14.3.3
+                    - python: '3.12'
+                      rich: 15.0.0
+        env:
+            LITELLM_LOCAL_MODEL_COST_MAP: 'true'
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  fetch-depth: 2
+            - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+              with:
+                  python-version: ${{ matrix.python }}
+            - name: Install locked dependencies
+              run: uv sync --frozen --dev --python '${{ matrix.python }}'
+            - name: Override Rich for compatibility check
+              if: matrix.rich == '15.0.0'
+              run: uv pip install 'rich==15.0.0'
+            - name: Record exact environment and tested revision
+              run: |
+                  git rev-parse HEAD
+                  git rev-parse HEAD^
+                  uname -a
+                  .venv/bin/python -c 'import sys, importlib.metadata as m; print(sys.version); print("Rich", m.version("rich"))'
+                  git diff --exit-code -- uv.lock
+            - name: Run logging and server regressions
+              run: |
+                  .venv/bin/python -m pytest \
+                    tests/sdk/logger/ \
+                    tests/agent_server/test_logging_live_server.py \
+                    tests/agent_server/test_sockets_service_getters.py \
+                    tests/agent_server/test_event_router_websocket.py \
+                    tests/agent_server/test_websocket_first_message_auth.py \
+                    tests/agent_server/test_session_socket.py \
+                    -q -s --junitxml=results.xml
+            - name: Retain test report
+              if: always()
+              uses: actions/upload-artifact@v7
+              with:
+                  name: linux-python-${{ matrix.python }}-rich-${{ matrix.rich }}
+                  path: results.xml
+                  if-no-files-found: warn
