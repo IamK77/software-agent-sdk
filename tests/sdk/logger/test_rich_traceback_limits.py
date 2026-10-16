@@ -75,7 +75,9 @@ def test_default_logging_bounds_exception_graph(shape, tmp_path):
         },
         capture_output=True,
         text=True,
-        timeout=15,
+        # Include cold SDK import time on slow/contended CI workers. This is a
+        # hang watchdog, not a logging latency benchmark.
+        timeout=30,
     )
     assert result.returncode == 0, result.stderr
     assert "logging returned" in result.stdout
